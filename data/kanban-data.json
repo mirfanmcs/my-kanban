@@ -1,0 +1,19 @@
+{
+  "boards": [
+    {
+      "id": "board-general",
+      "name": "General",
+      "columns": {
+        "To Do": [],
+        "In Progress": [],
+        "Completed": []
+      }
+    }
+  ],
+  "archived": [],
+  "archivedBoards": [],
+  "settings": {
+    "wipLimits": {}
+  },
+  "_rev": 1
+}

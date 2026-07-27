@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Kanban</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>📋 My Kanban</h1>
+    <div class="header-actions">
+      <button type="button" id="copilotBtn" class="btn btn-secondary btn-small copilot-toggle-btn" title="Open Copilot chat">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="copilotIconGradient" x1="1" y1="1" x2="15" y2="14" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#8A63F5"/>
+              <stop offset="50%" stop-color="#5B8DF6"/>
+              <stop offset="100%" stop-color="#33C6E0"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 1.2L9.4 5.4L13.6 6.8L9.4 8.2L8 12.4L6.6 8.2L2.4 6.8L6.6 5.4L8 1.2Z" fill="url(#copilotIconGradient)"/>
+          <path d="M12.6 9.6L13.2 11.4L15 12L13.2 12.6L12.6 14.4L12 12.6L10.2 12L12 11.4L12.6 9.6Z" fill="url(#copilotIconGradient)" opacity="0.9"/>
+        </svg>
+        Copilot
+      </button>
+      <button type="button" id="selectModeBtn" class="btn btn-secondary btn-small">☑ Select</button>
+      <button type="button" id="archiveBtn" class="btn btn-secondary btn-small">🗄 Archive <span id="archiveCount">(0)</span></button>
+      <div class="export-wrap">
+        <button type="button" id="exportBtn" class="btn btn-secondary btn-small" title="Export board(s) to Excel">⬇ Export</button>
+        <div class="export-menu" id="exportMenu">
+          <div class="export-menu-label">Select boards to export</div>
+          <label class="export-checkbox-row export-select-all-row">
+            <input type="checkbox" id="exportSelectAll" />
+            <span>All boards</span>
+          </label>
+          <div class="export-board-list" id="exportBoardList"></div>
+          <button type="button" class="btn btn-primary btn-small export-confirm-btn" id="exportConfirmBtn">Export selected</button>
+        </div>
+      </div>
+      <div class="theme-switcher">
+        <select id="themeSelect" class="theme-select" title="Choose theme">
+          <option value="dark">🌙 Dark</option>
+          <option value="light">☀️ Light</option>
+        </select>
+      </div>
+      <div class="save-status" id="saveStatus"></div>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs"></nav>
+
+  <div class="bulk-toolbar hidden" id="bulkToolbar">
+    <span id="bulkSelectedCount">0 selected</span>
+    <select id="bulkMoveSelect">
+      <option value="">Move to...</option>
+      <option value="To Do">To Do</option>
+      <option value="In Progress">In Progress</option>
+      <option value="Completed">Completed</option>
+    </select>
+    <button type="button" id="bulkArchiveBtn" class="btn btn-secondary btn-small">Archive Selected</button>
+    <button type="button" id="bulkDeleteBtn" class="btn btn-danger btn-small">Delete Selected</button>
+  </div>
+
+  <main id="boards"></main>
+
+  <div class="undo-toast hidden" id="undoToast">
+    <span id="undoMessage"></span>
+    <button type="button" id="undoBtn" class="btn btn-primary btn-small">Undo</button>
+  </div>
+
+  <div class="conflict-banner hidden" id="conflictBanner">
+    <span id="conflictMessage">This board was changed in another tab/window. Reload to see the latest version.</span>
+    <button type="button" id="conflictReloadBtn" class="btn btn-primary btn-small">Reload</button>
+  </div>
+
+  <!-- Archive modal -->
+  <div class="modal-overlay" id="archiveOverlay">
+    <div class="modal archive-modal">
+      <h2>Archived Items</h2>
+      <div class="archive-toolbar">
+        <label class="archive-select-all-label">
+          <input type="checkbox" id="archiveSelectAll" /> Select all
+        </label>
+        <div class="spacer"></div>
+        <button type="button" id="archiveDeleteSelectedBtn" class="btn btn-danger btn-small">Delete Selected Forever</button>
+        <button type="button" id="archiveDeleteAllBtn" class="btn btn-danger btn-small">Delete All Forever</button>
+      </div>
+      <div id="archiveList" class="archive-list"></div>
+
+      <h2 class="archive-section-heading">Deleted Boards</h2>
+      <div id="archivedBoardsList" class="archive-list"></div>
+
+      <div class="modal-actions">
+        <div class="spacer"></div>
+        <button type="button" id="closeArchiveBtn" class="btn btn-secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / Edit item modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <button type="button" class="copilot-close-btn modal-close-btn" id="modalCloseBtn" title="Close">✕</button>
+      <h2 id="modalTitle">New Item</h2>
+      <div class="heading-row">
+        <label class="heading-label">Heading
+          <input type="text" id="itemHeading" placeholder="Item title" maxlength="120" />
+        </label>
+        <div class="priority-label">
+          <span class="field-caption">Priority</span>
+          <div class="priority-picker" id="priorityPicker">
+            <button type="button" class="priority-swatch" data-priority="green" title="Low"><span class="dot"></span>Low</button>
+            <button type="button" class="priority-swatch" data-priority="yellow" title="Medium"><span class="dot"></span>Medium</button>
+            <button type="button" class="priority-swatch" data-priority="orange" title="High"><span class="dot"></span>High</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-block">
+        <label>Outcome
+          <input type="text" id="itemOutcome" placeholder="What does &quot;done&quot; look like for this item?" maxlength="300" />
+        </label>
+      </div>
+
+      <div class="date-tags-row">
+        <label class="due-date-compact">Due Date
+          <input type="date" id="itemDueDate" />
+        </label>
+        <div class="tags-compact">
+          <div class="task-list-header">
+            <span>Tags</span>
+          </div>
+          <div class="tag-input-row">
+            <input type="text" id="newTagText" placeholder="Tag name" maxlength="24" />
+            <div class="tag-color-picker" id="tagColorPicker"></div>
+            <button type="button" id="addTagBtn" class="btn btn-secondary btn-small">+ Add Tag</button>
+          </div>
+          <div class="tag-chip-list" id="tagChipList"></div>
+        </div>
+      </div>
+
+      <div class="field-block">
+        <span class="field-caption">Description</span>
+        <div class="editor-toolbar" id="descToolbar">
+          <button type="button" data-cmd="bold" title="Bold"><b>B</b></button>
+          <button type="button" data-cmd="italic" title="Italic"><i>I</i></button>
+          <button type="button" data-cmd="underline" title="Underline"><u>U</u></button>
+          <span class="toolbar-sep"></span>
+          <select id="fontSizePicker" class="font-size-picker" title="Font Size">
+            <option value="">Size</option>
+            <option value="8pt">8</option>
+            <option value="9pt">9</option>
+            <option value="10pt">10</option>
+            <option value="11pt" selected>11</option>
+            <option value="12pt">12</option>
+            <option value="14pt">14</option>
+            <option value="16pt">16</option>
+            <option value="18pt">18</option>
+            <option value="20pt">20</option>
+            <option value="24pt">24</option>
+            <option value="28pt">28</option>
+            <option value="36pt">36</option>
+            <option value="48pt">48</option>
+            <option value="72pt">72</option>
+          </select>
+          <span class="toolbar-sep"></span>
+          <button type="button" data-cmd="formatBlock" data-value="H3" title="Heading">H</button>
+          <button type="button" class="icon-btn" data-cmd="insertUnorderedList" title="Bullet List">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="2" cy="3" r="1.3" fill="currentColor"/>
+              <circle cx="2" cy="8" r="1.3" fill="currentColor"/>
+              <circle cx="2" cy="13" r="1.3" fill="currentColor"/>
+              <rect x="5.5" y="2.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+              <rect x="5.5" y="7.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+              <rect x="5.5" y="12.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+            </svg>
+          </button>
+          <button type="button" class="icon-btn" data-cmd="insertOrderedList" title="Numbered List">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <text x="0" y="3.9" font-size="3.6" font-family="Arial, sans-serif" fill="currentColor">1</text>
+              <text x="0" y="8.9" font-size="3.6" font-family="Arial, sans-serif" fill="currentColor">2</text>
+              <text x="0" y="13.9" font-size="3.6" font-family="Arial, sans-serif" fill="currentColor">3</text>
+              <rect x="5.5" y="2.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+              <rect x="5.5" y="7.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+              <rect x="5.5" y="12.2" width="9.5" height="1.6" rx="0.8" fill="currentColor"/>
+            </svg>
+          </button>
+          <span class="toolbar-sep"></span>
+          <label class="color-picker-label" title="Font Color">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M6.6 1.4H9.4L13 11.6H10.9L10.1 9.3H5.9L5.1 11.6H3L6.6 1.4ZM6.5 7.5H9.5L8 3.1L6.5 7.5Z" fill="currentColor"/>
+              <rect id="fontColorBar" x="1" y="13" width="14" height="2.2" rx="0.7" fill="#e5e7eb"/>
+            </svg>
+            <input type="color" id="fontColorPicker" value="#e5e7eb" />
+          </label>
+          <label class="color-picker-label" title="Highlight Color">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10.3 1.1L14.6 5.4L9 11L6.1 11.6L4.5 10L5.1 7.1L10.3 1.1Z" fill="currentColor"/>
+              <path d="M3.9 10.5L5.2 11.8L3.5 13.6C3.1 14 2.4 14 2 13.6C1.6 13.2 1.6 12.5 2 12.1L3.9 10.5Z" fill="currentColor" opacity="0.75"/>
+              <rect id="bgColorBar" x="1" y="14" width="14" height="1.6" rx="0.6" fill="#fde68a"/>
+            </svg>
+            <input type="color" id="bgColorPicker" value="#fde68a" />
+          </label>
+          <span class="toolbar-sep"></span>
+          <button type="button" data-cmd="removeFormat" title="Clear Formatting">Clear</button>
+        </div>
+        <div id="itemDescription" class="rich-editor" contenteditable="true"></div>
+      </div>
+
+      <div class="task-list-section">
+        <div class="task-list-header">
+          <span>Task List</span>
+          <button type="button" id="addTaskBtn" class="btn btn-secondary btn-small">+ Add Task</button>
+        </div>
+        <div id="taskListContainer"></div>
+      </div>
+
+      <div class="field-block">
+        <span class="field-caption">Activity Log</span>
+        <div id="activityLogContainer" class="activity-log"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="deleteItemBtn" class="btn btn-danger" style="display:none;">Archive</button>
+        <div class="spacer"></div>
+        <button type="button" id="cancelBtn" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="saveItemBtn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Copilot chat panel -->
+  <div class="copilot-panel" id="copilotPanel">
+    <button type="button" class="copilot-slide-tab" id="copilotSlideTab" title="Slide chat in/out">
+      <span class="copilot-slide-arrow" id="copilotSlideArrow">▶</span>
+    </button>
+    <div class="copilot-panel-header">
+      <div class="copilot-header-identity">
+        <span class="copilot-avatar copilot-avatar-bot">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M8 1.2L9.4 5.4L13.6 6.8L9.4 8.2L8 12.4L6.6 8.2L2.4 6.8L6.6 5.4L8 1.2Z" fill="currentColor"/>
+            <path d="M12.6 9.6L13.2 11.4L15 12L13.2 12.6L12.6 14.4L12 12.6L10.2 12L12 11.4L12.6 9.6Z" fill="currentColor" opacity="0.85"/>
+          </svg>
+        </span>
+        <div class="copilot-header-text">
+          <div class="copilot-title">Copilot</div>
+          <div class="copilot-subtitle">AI Assistant</div>
+        </div>
+      </div>
+      <button type="button" class="copilot-close-btn" id="copilotCloseBtn" title="Close">✕</button>
+    </div>
+
+    <div class="copilot-messages" id="copilotMessages"></div>
+
+    <div class="copilot-suggestions" id="copilotSuggestions"></div>
+
+    <div class="copilot-input-row">
+      <textarea id="copilotInput" class="copilot-input" placeholder="Ask Copilot..." rows="1"></textarea>
+      <button type="button" id="copilotSendBtn" class="copilot-send-btn" title="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1.5 8L14.5 1.5L10.5 8L14.5 14.5L1.5 8Z" fill="currentColor"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
