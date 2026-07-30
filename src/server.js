@@ -165,7 +165,9 @@ function buildFullBoardsDetail(boardData) {
 // board, covering every field visible in the UI, so the exported file is a
 // complete, readable snapshot rather than a partial dump.
 function encodeTasksCell(tasks) {
-  return (tasks || []).map((t) => `[${t.done ? 'x' : ' '}] ${t.text}`).join('\n');
+  return (tasks || [])
+    .map((t) => `[${t.done ? 'x' : ' '}] ${t.text}` + (t.dueDate ? ` (due: ${t.dueDate})` : ''))
+    .join('\n');
 }
 
 function encodeActivityLogCell(activityLog) {
@@ -282,16 +284,27 @@ function genImportId(prefix) {
 }
 
 // Parses a "Tasks" cell built by encodeTasksCell back into a task checklist.
-// Each line is "[x] text" (done) or "[ ] text" (not done); lines without that
-// prefix (e.g. hand-typed in Excel) are kept as not-done tasks.
+// Each line is "[x] text" (done) or "[ ] text" (not done), optionally
+// followed by " (due: YYYY-MM-DD)" for tasks with a due date; lines without
+// the "[ ]"/"[x]" prefix (e.g. hand-typed in Excel) are kept as not-done
+// tasks with no due date.
 function decodeTasksCell(cell) {
+  const dueSuffixRe = /\s*\(due:\s*(\d{4}-\d{2}-\d{2})\)\s*$/i;
   return String(cell || '')
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
       const m = line.match(/^\[([ xX])\]\s*(.*)$/);
-      return m ? { id: genImportId('task'), text: m[2], done: m[1].toLowerCase() === 'x' } : { id: genImportId('task'), text: line, done: false };
+      let text = m ? m[2] : line;
+      const done = m ? m[1].toLowerCase() === 'x' : false;
+      let dueDate = null;
+      const dueMatch = text.match(dueSuffixRe);
+      if (dueMatch && isValidDateStr(dueMatch[1])) {
+        dueDate = dueMatch[1];
+        text = text.slice(0, dueMatch.index).trim();
+      }
+      return { id: genImportId('task'), text, done, dueDate };
     });
 }
 
@@ -909,7 +922,7 @@ function applyWorkiqFindings(item, findings) {
   if (actionItems.length) {
     item.tasks = item.tasks || [];
     actionItems.forEach((text, idx) => {
-      item.tasks.push({ id: `task-${Date.now()}-${idx}`, text: String(text), done: false });
+      item.tasks.push({ id: `task-${Date.now()}-${idx}`, text: String(text), done: false, dueDate: null });
     });
     changes.push('tasks');
   }

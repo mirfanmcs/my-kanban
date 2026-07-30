@@ -1546,6 +1546,15 @@ function renderTaskList() {
       task.text = textInput.value;
     });
 
+    const dateInput = document.createElement('input');
+    dateInput.type = 'date';
+    dateInput.className = 'task-row-date';
+    dateInput.value = task.dueDate || '';
+    dateInput.title = 'Due date (optional)';
+    dateInput.addEventListener('change', () => {
+      task.dueDate = dateInput.value || null;
+    });
+
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'task-row-delete';
@@ -1557,6 +1566,7 @@ function renderTaskList() {
 
     row.appendChild(checkbox);
     row.appendChild(textInput);
+    row.appendChild(dateInput);
     row.appendChild(deleteBtn);
     taskListContainerEl.appendChild(row);
   });
@@ -1656,7 +1666,7 @@ saveItemBtn.addEventListener('click', () => {
   if (!board) return;
   const cleanTasks = modalTasks
     .filter((t) => t.text.trim() !== '')
-    .map((t) => ({ id: t.id || uid(), text: t.text.trim(), done: !!t.done }));
+    .map((t) => ({ id: t.id || uid(), text: t.text.trim(), done: !!t.done, dueDate: t.dueDate || null }));
 
   if (id) {
     const item = findItem(boardId, column, id);
@@ -1699,7 +1709,7 @@ saveItemBtn.addEventListener('click', () => {
 });
 
 addTaskBtn.addEventListener('click', () => {
-  modalTasks.push({ id: uid(), text: '', done: false });
+  modalTasks.push({ id: uid(), text: '', done: false, dueDate: null });
   renderTaskList();
   const inputs = taskListContainerEl.querySelectorAll('input[type="text"]');
   if (inputs.length) inputs[inputs.length - 1].focus();

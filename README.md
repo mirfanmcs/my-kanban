@@ -120,7 +120,8 @@ Click **`+ Add item`** at the bottom of a column:
   - **Description** — a rich-text box with a toolbar (Bold/Italic/Underline, headings,
     bullet/numbered lists, font color, highlight color, and font size by point number,
     like Word). Use it for status notes, next actions, blockers, dates, and contacts.
-  - **Checklist** — add sub-tasks with checkboxes via **"+ Add Task"**.
+  - **Checklist** — add sub-tasks with checkboxes via **"+ Add Task"**. Each sub-task
+    also has its own optional **due date** field, independent of the item's own Due Date.
 
 Click **Save**. To edit an existing card, just click it — the same dialog opens
 pre-filled. A **Delete** button appears in edit mode.
@@ -154,9 +155,12 @@ Click **Select** in the header to enter multi-select mode on cards, or use the
 - Choose to export the **currently selected board**, pick specific boards via
   checkboxes, or export **all boards** at once.
 - Each exported board becomes its own sheet in a single `.xlsx` workbook, with columns
-  for Heading, Outcome, Priority, Due Date, Completion Date, Overdue, Tags, and every
-  description section (Current status, Next action, Blockers, Dates, Contacts, Update
-  History).
+  for Column, Heading, Outcome, Priority, Due Date, Completion Date, Overdue, Tags,
+  Tasks, every description section (Current status, Next action, Blockers, Dates,
+  Contacts, Update History), and Activity Log.
+- The **Tasks** column encodes each checklist item as one line: `[x] text` (done) or
+  `[ ] text` (not done), with an optional trailing `(due: YYYY-MM-DD)` when that
+  sub-task has its own due date.
 
 ### Importing from Excel
 
@@ -169,7 +173,9 @@ re-saved in Excel):
   (items already present, matched by heading, are skipped so re-importing the same
   file twice won't create duplicates); otherwise a new board is created.
 - Columns are matched by header name rather than position, so older exports missing a
-  newer column (or newer exports with extra columns) still import cleanly.
+  newer column (or newer exports with extra columns) still import cleanly. A **Tasks**
+  cell's optional `(due: YYYY-MM-DD)` suffix is parsed back into that sub-task's due
+  date; lines without it import with no due date.
 - After a successful import, boards reload automatically and an **Undo** toast lets you
   reverse it — removing newly created boards or just the items that were merged in.
 - If the file has no recognizable Kanban sheet (i.e. no "Heading" column), the import

@@ -1073,6 +1073,23 @@ main {
   color: var(--muted);
 }
 
+.task-row input[type="date"].task-row-date {
+  flex-shrink: 0;
+  width: 132px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.task-row input[type="date"].task-row-date:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .task-row-delete {
   background: none;
   border: none;
