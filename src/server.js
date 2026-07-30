@@ -164,6 +164,14 @@ function buildFullBoardsDetail(boardData) {
 // Builds one worksheet's row data (header + one row per item) for a single
 // board, covering every field visible in the UI, so the exported file is a
 // complete, readable snapshot rather than a partial dump.
+function encodeTasksCell(tasks) {
+  return (tasks || []).map((t) => `[${t.done ? 'x' : ' '}] ${t.text}`).join('\n');
+}
+
+function encodeActivityLogCell(activityLog) {
+  return (activityLog || []).map((e) => `${e.ts} - ${e.text}`).join('\n');
+}
+
 function buildBoardSheetRows(board) {
   const header = [
     'Column',
@@ -174,7 +182,9 @@ function buildBoardSheetRows(board) {
     'Completion Date',
     'Overdue',
     'Tags',
+    'Tasks',
     ...SECTION_LABELS,
+    'Activity Log',
   ];
   const rows = [header];
   COLUMNS.forEach((col) => {
@@ -190,15 +200,17 @@ function buildBoardSheetRows(board) {
         item.dueDate || '',
         item.completionDate || '',
         overdue ? 'Yes' : 'No',
-        (item.tags || []).map((t) => t.text).join(', '),
+        (item.tags || []).map((t) => (t.color ? `${t.text} (${t.color})` : t.text)).join(', '),
+        encodeTasksCell(item.tasks),
         ...SECTION_LABELS.map((label) => stripHtml(sections[label])),
+        encodeActivityLogCell(item.activityLog),
       ]);
     });
   });
   return rows;
 }
 
-const EXPORT_COL_WIDTHS = [14, 32, 30, 10, 12, 14, 10, 20, 22, 26, 26, 18, 22, 30];
+const EXPORT_COL_WIDTHS = [14, 32, 30, 10, 12, 14, 10, 20, 26, 22, 26, 26, 18, 22, 30, 34];
 
 
 // sections provided (mirrors DESCRIPTION_TEMPLATE in src\app.js).
@@ -210,16 +222,33 @@ function buildDescriptionHtml(sections) {
   }).join('');
 }
 
-// Extracts each section's current inner HTML from an existing description.
+// Extracts each section's current HTML from an existing description. The
+// editor is a contenteditable region: typing after a label's <p class="desc-field">
+// tag doesn't insert text into that same tag, it creates *sibling* <p> elements
+// after it (the label tag itself stays as an empty "<br>" placeholder). So the
+// real authored content for a section lives in everything between that
+// section's label tag and the next section's label tag (or the end of the
+// description for the last section) - not just inside the label's own tag.
 function parseDescriptionSections(html) {
+  const src = String(html || '');
   const result = {};
-  SECTION_LABELS.forEach((label) => {
+  SECTION_LABELS.forEach((label, i) => {
     const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(`<p class="desc-field" data-label="${escapedLabel}:">([\\s\\S]*?)</p>`);
-    const m = html && html.match(re);
-    let val = m ? m[1] : '';
-    if (val === '<br>') val = '';
-    result[label] = val;
+    const startRe = new RegExp(`<p class="desc-field" data-label="${escapedLabel}:">`);
+    const startMatch = src.match(startRe);
+    if (!startMatch) {
+      result[label] = '';
+      return;
+    }
+    const startIdx = startMatch.index + startMatch[0].length;
+    let endIdx = src.length;
+    const nextLabel = SECTION_LABELS[i + 1];
+    if (nextLabel) {
+      const escapedNext = nextLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const endMatch = src.match(new RegExp(`<p class="desc-field" data-label="${escapedNext}:">`));
+      if (endMatch) endIdx = endMatch.index;
+    }
+    result[label] = src.slice(startIdx, endIdx);
   });
   return result;
 }
@@ -250,6 +279,36 @@ function isValidDateStr(s) {
 
 function genImportId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Parses a "Tasks" cell built by encodeTasksCell back into a task checklist.
+// Each line is "[x] text" (done) or "[ ] text" (not done); lines without that
+// prefix (e.g. hand-typed in Excel) are kept as not-done tasks.
+function decodeTasksCell(cell) {
+  return String(cell || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^\[([ xX])\]\s*(.*)$/);
+      return m ? { id: genImportId('task'), text: m[2], done: m[1].toLowerCase() === 'x' } : { id: genImportId('task'), text: line, done: false };
+    });
+}
+
+// Parses an "Activity Log" cell built by encodeActivityLogCell back into log
+// entries. Each line is "<iso timestamp> - text"; lines with an unparseable
+// timestamp fall back to "now" rather than being dropped.
+function decodeActivityLogCell(cell) {
+  return String(cell || '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const m = line.match(/^(.*?) - (.*)$/);
+      const ts = m && !isNaN(Date.parse(m[1])) ? m[1] : new Date().toISOString();
+      const text = m ? m[2] : line;
+      return { ts, text };
+    });
 }
 
 // Converts one worksheet's rows (row 0 = header) back into a board object.
@@ -289,12 +348,21 @@ function buildBoardFromSheet(sheetName, rows) {
     const dueDate = get(row, 'due date');
     const completionDate = get(row, 'completion date');
     const tagsRaw = get(row, 'tags');
+    const tagColorSuffixRe = new RegExp(`\\s*\\((${IMPORT_TAG_COLORS.join('|')})\\)$`, 'i');
     const tags = tagsRaw
       ? tagsRaw
           .split(',')
           .map((t) => t.trim())
           .filter(Boolean)
-          .map((text, i) => ({ text, color: IMPORT_TAG_COLORS[i % IMPORT_TAG_COLORS.length] }))
+          .map((raw, i) => {
+            const m = raw.match(tagColorSuffixRe);
+            if (m) {
+              return { text: raw.slice(0, m.index).trim(), color: m[1].toLowerCase() };
+            }
+            // Older exports (or hand-edited files) without a "(color)" suffix
+            // fall back to cycling through the default palette.
+            return { text: raw, color: IMPORT_TAG_COLORS[i % IMPORT_TAG_COLORS.length] };
+          })
       : [];
 
     board.columns[column].push({
@@ -306,8 +374,8 @@ function buildBoardFromSheet(sheetName, rows) {
       dueDate: isValidDateStr(dueDate) ? dueDate : null,
       completionDate: isValidDateStr(completionDate) ? completionDate : null,
       tags,
-      tasks: [],
-      activityLog: [],
+      tasks: decodeTasksCell(get(row, 'tasks')),
+      activityLog: decodeActivityLogCell(get(row, 'activity log')),
     });
   }
   return board;
@@ -384,29 +452,47 @@ function migrateLegacyOutcome(data) {
 // "Update History" text is appended as a new line rather than replacing it.
 function applyDescriptionUpdates(existingHtml, updates) {
   const sections = parseDescriptionSections(existingHtml || buildDescriptionHtml({}));
+  const replaced = new Set(); // labels fully rebuilt into a fresh, single-paragraph fragment
   if (updates && typeof updates === 'object') {
     if (Object.prototype.hasOwnProperty.call(updates, 'Current status') && updates['Current status']) {
       const oldStatus = sections['Current status'];
-      if (oldStatus && oldStatus.trim()) {
+      if (stripHtml(oldStatus)) {
         const datedLine = escapeHtml(`${todayStr()}: `) + oldStatus;
-        sections['Update History'] = sections['Update History'] ? sections['Update History'] + '<br>' + datedLine : datedLine;
+        sections['Update History'] = stripHtml(sections['Update History'])
+          ? sections['Update History'] + '<br>' + datedLine
+          : datedLine;
+        replaced.add('Update History');
       }
       sections['Current status'] = escapeHtml(String(updates['Current status']));
+      replaced.add('Current status');
     }
     SECTION_LABELS.forEach((label) => {
       if (label === 'Current status') return; // handled above
       if (!updates[label]) return;
       if (label === 'Update History') {
         const newLine = escapeHtml(String(updates[label]));
-        sections[label] = sections[label] ? sections[label] + '<br>' + newLine : newLine;
+        sections[label] = stripHtml(sections[label]) ? sections[label] + '<br>' + newLine : newLine;
       } else {
         sections[label] = escapeHtml(String(updates[label]));
       }
+      replaced.add(label);
     });
   }
+  // Labels that were reassigned above get rebuilt as a fresh, single-paragraph
+  // fragment (matching the original template shape). Untouched labels keep
+  // their original raw HTML span verbatim - re-wrapping it here would double
+  // up the closing tags already present in that span and corrupt the markup.
   return SECTION_LABELS.map((label) => {
-    const val = sections[label] && sections[label].trim() ? sections[label] : '<br>';
-    return `<p class="desc-field" data-label="${label}:">${val}</p><p><br></p>`;
+    if (replaced.has(label)) {
+      const val = stripHtml(sections[label]) ? sections[label] : '<br>';
+      return `<p class="desc-field" data-label="${label}:">${val}</p><p><br></p>`;
+    }
+    // Untouched: pass the original raw span straight through (it already
+    // ends with proper closing tags leading into the next label, or the end
+    // of the description) - substituting a fallback here would strip those
+    // closing tags and corrupt the markup.
+    const raw = sections[label] || '<br></p><p><br></p>';
+    return `<p class="desc-field" data-label="${label}:">${raw}`;
   }).join('');
 }
 
