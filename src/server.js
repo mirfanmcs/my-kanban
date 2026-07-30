@@ -204,7 +204,11 @@ function buildBoardSheetRows(board) {
         overdue ? 'Yes' : 'No',
         (item.tags || []).map((t) => (t.color ? `${t.text} (${t.color})` : t.text)).join(', '),
         encodeTasksCell(item.tasks),
-        ...SECTION_LABELS.map((label) => stripHtml(sections[label])),
+        // Export each section's raw HTML (bold/italic/color/lists/etc.), not
+        // stripped plain text, so re-importing the same file restores the
+        // original formatting instead of flattening it (see
+        // buildDescriptionHtmlFromRawSections, used on import).
+        ...SECTION_LABELS.map((label) => (sections[label] || '').trim()),
         encodeActivityLogCell(item.activityLog),
       ]);
     });
@@ -220,6 +224,37 @@ function buildDescriptionHtml(sections) {
   return SECTION_LABELS.map((label) => {
     const raw = sections && sections[label] ? String(sections[label]).trim() : '';
     const inner = raw ? escapeHtml(raw) : '<br>';
+    return `<p class="desc-field" data-label="${label}:">${inner}</p><p><br></p>`;
+  }).join('');
+}
+
+// Recognizes rich-text markup produced by the description editor (bold,
+// italic, colored/sized spans, lists, etc.) so buildDescriptionHtmlFromRawSections
+// can tell a cell holding raw exported HTML apart from one holding plain text
+// (an older plain-text export, or a cell a user hand-typed in Excel).
+const HTML_TAG_RE = /<\/?(p|br|b|i|u|strong|em|span|font|div|ul|ol|li|a|s|strike|del|sup|sub|blockquote|h[1-6]|code|pre|table|tr|td|th|hr|img)(\s[^>]*)?\/?>/i;
+
+function looksLikeHtml(s) {
+  return HTML_TAG_RE.test(String(s || ''));
+}
+
+// Counterpart to buildDescriptionHtml used specifically when rebuilding a
+// description from an *exported* sheet (see buildBoardFromSheet). Sections
+// there hold each label's raw HTML span exactly as captured by
+// parseDescriptionSections/buildBoardSheetRows - i.e. everything from just
+// after the label's opening <p> tag through the trailing spacer paragraph -
+// so passing it straight through here reconstructs the original description
+// markup (formatting included) instead of flattening it to plain text.
+// Cells that don't look like HTML (older plain-text exports, or a section a
+// user hand-typed into Excel) are still escaped and wrapped like before.
+function buildDescriptionHtmlFromRawSections(sections) {
+  return SECTION_LABELS.map((label) => {
+    const raw = sections && sections[label] ? String(sections[label]) : '';
+    if (looksLikeHtml(raw)) {
+      return `<p class="desc-field" data-label="${label}:">${raw}`;
+    }
+    const trimmed = raw.trim();
+    const inner = trimmed ? escapeHtml(trimmed) : '<br>';
     return `<p class="desc-field" data-label="${label}:">${inner}</p><p><br></p>`;
   }).join('');
 }
@@ -381,7 +416,7 @@ function buildBoardFromSheet(sheetName, rows) {
     board.columns[column].push({
       id: genImportId('item'),
       heading,
-      description: buildDescriptionHtml(sections),
+      description: buildDescriptionHtmlFromRawSections(sections),
       outcome: get(row, 'outcome'),
       priority: priorityFromLabel(get(row, 'priority')),
       dueDate: isValidDateStr(dueDate) ? dueDate : null,
