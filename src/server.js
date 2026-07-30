@@ -6,6 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const { buildXlsx } = require('./xlsxWriter');
+const { parseXlsx } = require('./xlsxReader');
 
 const PORT = process.env.PORT || 9000;
 const PROJECT_ROOT = path.join(__dirname, '..');
@@ -221,6 +222,95 @@ function parseDescriptionSections(html) {
     result[label] = val;
   });
   return result;
+}
+
+// === Import (Excel -> boards) ===
+// Rebuilds board data from a workbook produced by /api/export (or that same
+// file after being opened/edited/re-saved in Excel). Columns are matched by
+// *header name* rather than position, and unrecognized/missing headers are
+// simply ignored/defaulted — so an older export (missing a column a newer UI
+// added) still imports cleanly, and a newer export opened by an older build
+// of this app degrades gracefully instead of erroring.
+const IMPORT_TAG_COLORS = ['blue', 'green', 'yellow', 'red'];
+
+function normalizeHeader(h) {
+  return String(h == null ? '' : h).trim().toLowerCase();
+}
+
+function priorityFromLabel(label) {
+  const l = normalizeHeader(label);
+  if (l === 'high') return 'orange';
+  if (l === 'medium') return 'yellow';
+  return 'green'; // covers 'low' and anything unrecognized
+}
+
+function isValidDateStr(s) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(s || '').trim());
+}
+
+function genImportId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Converts one worksheet's rows (row 0 = header) back into a board object.
+// Returns null if the sheet doesn't look like a Kanban export at all (no
+// recognizable "Heading" column), so unrelated sheets in the workbook are
+// skipped instead of producing garbage boards.
+function buildBoardFromSheet(sheetName, rows) {
+  if (!rows || !rows.length) return null;
+  const header = rows[0].map(normalizeHeader);
+  const idx = {};
+  header.forEach((h, i) => {
+    if (h && !(h in idx)) idx[h] = i; // first occurrence wins if a header repeats
+  });
+  if (idx['heading'] === undefined) return null;
+
+  const get = (row, label) => (idx[label] !== undefined ? String(row[idx[label]] || '').trim() : '');
+
+  const board = {
+    id: genImportId('board'),
+    name: sheetName || 'Imported board',
+    columns: { 'To Do': [], 'In Progress': [], Completed: [] },
+  };
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const heading = get(row, 'heading');
+    if (!heading) continue; // skip blank/separator rows
+
+    const rawCol = get(row, 'column');
+    const column = COLUMNS.find((c) => c.toLowerCase() === rawCol.toLowerCase()) || COLUMNS[0];
+
+    const sections = {};
+    SECTION_LABELS.forEach((label) => {
+      sections[label] = get(row, label.toLowerCase());
+    });
+
+    const dueDate = get(row, 'due date');
+    const completionDate = get(row, 'completion date');
+    const tagsRaw = get(row, 'tags');
+    const tags = tagsRaw
+      ? tagsRaw
+          .split(',')
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .map((text, i) => ({ text, color: IMPORT_TAG_COLORS[i % IMPORT_TAG_COLORS.length] }))
+      : [];
+
+    board.columns[column].push({
+      id: genImportId('item'),
+      heading,
+      description: buildDescriptionHtml(sections),
+      outcome: get(row, 'outcome'),
+      priority: priorityFromLabel(get(row, 'priority')),
+      dueDate: isValidDateStr(dueDate) ? dueDate : null,
+      completionDate: isValidDateStr(completionDate) ? completionDate : null,
+      tags,
+      tasks: [],
+      activityLog: [],
+    });
+  }
+  return board;
 }
 
 // Walks every item across active boards, archived items, and archived boards.
@@ -1077,6 +1167,104 @@ const server = http.createServer((req, res) => {
       res.writeHead(500, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: false, error: e.message }));
     }
+    return;
+  }
+
+  // Imports an .xlsx workbook produced by /api/export (or that same file
+  // re-saved by Excel) back into the app: each recognizable worksheet becomes
+  // a new board, appended alongside existing boards (never overwriting them).
+  // If a board with the same name already exists, items are merged into it
+  // instead of creating a duplicate board (skipping items that already exist
+  // by heading, so re-importing the same file twice doesn't create dupes).
+  if (req.url === '/api/import' && req.method === 'POST') {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        if (!buffer.length) throw new Error('No file received.');
+
+        const sheets = parseXlsx(buffer);
+        const boardData = loadData();
+        const boardByNameLower = new Map(boardData.boards.map((b) => [b.name.toLowerCase(), b]));
+        const imported = [];
+        const skipped = [];
+
+        sheets.forEach((sheet) => {
+          const built = buildBoardFromSheet(sheet.name, sheet.rows);
+          if (!built) {
+            skipped.push(sheet.name);
+            return;
+          }
+
+          const key = built.name.trim().toLowerCase();
+          const existingBoard = boardByNameLower.get(key);
+
+          if (existingBoard) {
+            // Merge: append each imported item into the matching column of
+            // the existing board, skipping ones that already exist there
+            // (matched by heading, case-insensitively, across all columns).
+            const existingHeadings = new Set();
+            COLUMNS.forEach((c) =>
+              (existingBoard.columns[c] || []).forEach((it) => existingHeadings.add(String(it.heading || '').trim().toLowerCase()))
+            );
+            const addedItemIds = [];
+            let duplicatesSkipped = 0;
+            COLUMNS.forEach((col) => {
+              (built.columns[col] || []).forEach((item) => {
+                const headingKey = String(item.heading || '').trim().toLowerCase();
+                if (existingHeadings.has(headingKey)) {
+                  duplicatesSkipped++;
+                  return;
+                }
+                existingHeadings.add(headingKey);
+                if (!existingBoard.columns[col]) existingBoard.columns[col] = [];
+                existingBoard.columns[col].push(item);
+                addedItemIds.push(item.id);
+              });
+            });
+            imported.push({
+              id: existingBoard.id,
+              name: existingBoard.name,
+              merged: true,
+              itemCount: addedItemIds.length,
+              addedItemIds,
+              duplicatesSkipped,
+            });
+          } else {
+            boardData.boards.push(built);
+            boardByNameLower.set(key, built);
+            imported.push({
+              id: built.id,
+              name: built.name,
+              merged: false,
+              itemCount: COLUMNS.reduce((n, c) => n + built.columns[c].length, 0),
+              addedItemIds: COLUMNS.flatMap((c) => built.columns[c].map((it) => it.id)),
+              duplicatesSkipped: 0,
+            });
+          }
+        });
+
+        if (!imported.length) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error:
+                'No recognizable Kanban board sheet(s) found in this file. Import expects an .xlsx exported from Kanban (with a "Heading" column).',
+            })
+          );
+          return;
+        }
+
+        persistBoardData(boardData);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, imported, skipped, rev: boardData._rev }));
+      } catch (e) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: e.message || 'Could not read this file as .xlsx.' }));
+      }
+    });
     return;
   }
 

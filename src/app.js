@@ -90,6 +90,8 @@ const exportMenu = document.getElementById('exportMenu');
 const exportSelectAllEl = document.getElementById('exportSelectAll');
 const exportBoardListEl = document.getElementById('exportBoardList');
 const exportConfirmBtn = document.getElementById('exportConfirmBtn');
+const importBtn = document.getElementById('importBtn');
+const importFileInput = document.getElementById('importFileInput');
 const archiveCountEl = document.getElementById('archiveCount');
 const archiveOverlay = document.getElementById('archiveOverlay');
 const archiveListEl = document.getElementById('archiveList');
@@ -614,6 +616,66 @@ exportConfirmBtn.addEventListener('click', () => {
   const boardParam = checkedIds.length === boxes.length ? 'all' : checkedIds.join(',');
   exportMenu.classList.remove('open');
   window.location.href = '/api/export?board=' + encodeURIComponent(boardParam);
+});
+
+// === Import (Excel -> boards) ===
+// Reuses the same .xlsx format /api/export produces: pick a file, ship its
+// raw bytes to the server (which is tolerant of column reordering/extra or
+// missing columns, so older/newer exports both import cleanly). Sheets whose
+// name matches an existing board are merged into it (skipping items that
+// already exist there); otherwise a new board is created. Then reload board
+// data so the results show up as tabs.
+importBtn.addEventListener('click', () => {
+  importFileInput.click();
+});
+
+importFileInput.addEventListener('change', async () => {
+  const file = importFileInput.files && importFileInput.files[0];
+  importFileInput.value = ''; // allow re-selecting the same file next time
+  if (!file) return;
+
+  importBtn.disabled = true;
+  const originalLabel = importBtn.textContent;
+  importBtn.textContent = 'Importing...';
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch('/api/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buf,
+    });
+    const json = await res.json();
+    if (!res.ok || !json.ok) throw new Error(json.error || 'Import failed.');
+
+    await loadData();
+    const summary = json.imported
+      .map((b) => `${b.name}${b.merged ? ` (+${b.itemCount})` : ` (${b.itemCount})`}`)
+      .join(', ');
+    if (json.imported.length === 1) activeBoardId = json.imported[0].id;
+    render();
+    showUndo(`Imported into ${summary}`, () => {
+      json.imported.forEach((entry) => {
+        const board = boardData.boards.find((b) => b.id === entry.id);
+        if (!board) return;
+        if (entry.merged) {
+          // Merge undo: only strip the items this import actually added,
+          // leaving the board's pre-existing items untouched.
+          const addedIds = new Set(entry.addedItemIds || []);
+          COLUMNS.forEach((col) => {
+            board.columns[col] = (board.columns[col] || []).filter((it) => !addedIds.has(it.id));
+          });
+        } else {
+          boardData.boards = boardData.boards.filter((b) => b.id !== entry.id);
+        }
+      });
+      if (!boardData.boards.some((b) => b.id === activeBoardId)) activeBoardId = boardData.boards[0].id;
+    });
+  } catch (e) {
+    window.alert('Import failed: ' + e.message);
+  } finally {
+    importBtn.disabled = false;
+    importBtn.textContent = originalLabel;
+  }
 });
 
 // === Undo toast ===

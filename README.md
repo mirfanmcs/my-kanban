@@ -19,6 +19,8 @@ found in your email, calendar, Teams chats, and meeting notes/transcripts.
 - [Starting and stopping the app](#starting-and-stopping-the-app)
 - [Opening it in your browser](#opening-it-in-your-browser)
 - [Using the dashboard](#using-the-dashboard)
+  - [Select mode & exporting to Excel](#select-mode--exporting-to-excel)
+  - [Importing from Excel](#importing-from-excel)
 - [Using the Copilot chat widget](#using-the-copilot-chat-widget)
 - [Data storage](#data-storage)
 - [Project structure](#project-structure)
@@ -153,6 +155,23 @@ Click **Select** in the header to enter multi-select mode on cards, or use the
   description section (Current status, Next action, Blockers, Dates, Contacts, Update
   History).
 
+### Importing from Excel
+
+Click **⬆ Import** in the header and pick an `.xlsx` file — normally one produced by
+the **Export** feature above (including one that's since been opened, edited, and
+re-saved in Excel):
+
+- Each worksheet in the file becomes a board. If a board with the same name already
+  exists, its items are merged into that board instead of creating a duplicate
+  (items already present, matched by heading, are skipped so re-importing the same
+  file twice won't create duplicates); otherwise a new board is created.
+- Columns are matched by header name rather than position, so older exports missing a
+  newer column (or newer exports with extra columns) still import cleanly.
+- After a successful import, boards reload automatically and an **Undo** toast lets you
+  reverse it — removing newly created boards or just the items that were merged in.
+- If the file has no recognizable Kanban sheet (i.e. no "Heading" column), the import
+  is rejected with an error instead of creating empty/garbage boards.
+
 ### Theme
 
 The **Dark/Light** dropdown in the top-right switches the whole UI's color theme; your
@@ -237,7 +256,7 @@ my-kanban/
 │  ├─ board-query/
 │  └─ item-update/
 └─ src/
-   ├─ server.js          # Node HTTP server: static files, /api/data, /api/copilot-chat, export
+   ├─ server.js          # Node HTTP server: static files, /api/data, /api/copilot-chat, export/import
    ├─ app.js              # front-end app logic (rendering, drag-drop, dialogs, chat widget)
    ├─ index.html          # page markup
    ├─ style.css           # styling (dark/light themes included)
