@@ -113,8 +113,10 @@ Click **`+ Add item`** at the bottom of a column:
   - **Outcome** — a one-time, static statement of what "done" looks like for this item.
     Set once and generally left unchanged afterwards.
   - **Priority** — Low (green), Medium (yellow), or High (orange) — click a swatch.
-  - **Due Date** and **Tags** — set together on one compact row. Tags are colored
-    (4 colors: blue, green, yellow, red) and searchable/filterable.
+  - **Due Date**, **Completion Date**, and **Tags** — set together on one compact row.
+    Completion Date auto-fills with today's date when a card is moved into **Completed**,
+    but it's a normal date field you can edit or clear at any time, in any column. Tags are
+    colored (4 colors: blue, green, yellow, red) and searchable/filterable.
   - **Description** — a rich-text box with a toolbar (Bold/Italic/Underline, headings,
     bullet/numbered lists, font color, highlight color, and font size by point number,
     like Word). Use it for status notes, next actions, blockers, dates, and contacts.
@@ -128,8 +130,9 @@ pre-filled. A **Delete** button appears in edit mode.
 - **Drag and drop** a card between columns, or onto a different board's tab.
 - Hover a card to reveal a small **⇄** (move to another board) and 🗑 (archive) icon.
 - Moving a card into **Completed** automatically stamps today's date as its completion
-  date; moving it back out clears that date. An overdue card (past its Due Date and not
-  in Completed) shows a **⚠ Overdue** badge.
+  date; moving it back out clears that date. You can override the completion date at
+  any time by opening the card and editing the **Completion Date** field directly. An
+  overdue card (past its Due Date and not in Completed) shows a **⚠ Overdue** badge.
 
 ### Searching and filtering
 

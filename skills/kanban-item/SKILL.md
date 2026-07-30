@@ -82,10 +82,12 @@ Field rules:
   `dueDate < today` and the item isn't in `Completed`. **See "`dueDate` vs. dates
   mentioned in the content" below — do not auto-fill this from every date the user
   mentions.**
-- `completionDate`: **do not expose this as an editable field** — it is set
-  automatically to today's date (`YYYY-MM-DD`) whenever an item is moved into (or
-  created directly in) the `Completed` column, and cleared (`null`) when moved back out.
-  This mirrors the app's own logic in `moveItem()`.
+- `completionDate`: user-editable date string, or `null`. It auto-fills with today's
+  date (`YYYY-MM-DD`) whenever an item is moved into (or created directly in) the
+  `Completed` column, and is cleared (`null`) when moved back out — mirroring the app's
+  own logic in `moveItem()`. The modal also exposes it as a normal `#itemCompletionDate`
+  date input (`Field rules` above still apply), so it can be set/overridden to any date
+  regardless of column, the same as `dueDate`.
 - `tags`: array of `{ text, color }`. Valid `color` keys: `blue, purple, teal, pink,
   gray, green, yellow, orange, red` (see `TAG_COLORS` in `src\app.js`).
 - `description`: HTML string from a rich-text editor. **Always use the template below
@@ -254,6 +256,7 @@ controls:
 | Heading | `#itemHeading` | required, max 120 chars |
 | Priority | `#priorityPicker .priority-swatch[data-priority="green\|yellow\|orange"]` | click to select |
 | Due Date | `#itemDueDate` | `<input type="date">` |
+| Completion Date | `#itemCompletionDate` | `<input type="date">`; auto-filled on move into `Completed`, but freely editable/clearable |
 | Tag name | `#newTagText` + `#addTagBtn` | type then click "+ Add Tag"; color chosen via `#tagColorPicker` swatch first |
 | Description | `#itemDescription` (contenteditable) | toolbar `#descToolbar` has Bold/Italic/Underline/Heading/Bullet-list/Numbered-list/Font-color/Highlight-color buttons using `execCommand` |
 | Task checklist | "+ Add Task" button, then per-row text input + checkbox | |
@@ -265,9 +268,9 @@ either fill the quick text input + click `.quick-add-confirm` for a heading-only
 or click `.quick-add-full-link` to open the full modal for all fields.
 
 To edit an existing item: click its `.card` to open the same modal pre-filled via
-`openModal(boardId, column, itemId)`; there is **no Completion Date field** in the
-dialog — completion date is derived automatically from column placement, never edited
-directly.
+`openModal(boardId, column, itemId)`; the dialog includes a **Completion Date** field
+(`#itemCompletionDate`) so it can be edited directly, in addition to being auto-set on
+column moves.
 
 Drag-and-drop between columns (native HTML5 DnD, `.card[draggable=true]`) is how items
 move between To Do / In Progress / Completed; this is what sets `completionDate`

@@ -61,6 +61,7 @@ const itemHeadingEl = document.getElementById('itemHeading');
 const itemOutcomeEl = document.getElementById('itemOutcome');
 const itemDescriptionEl = document.getElementById('itemDescription');
 const itemDueDateEl = document.getElementById('itemDueDate');
+const itemCompletionDateEl = document.getElementById('itemCompletionDate');
 const priorityPickerEl = document.getElementById('priorityPicker');
 const deleteItemBtn = document.getElementById('deleteItemBtn');
 const cancelBtn = document.getElementById('cancelBtn');
@@ -1574,6 +1575,7 @@ function openModal(boardId, column, id) {
     itemOutcomeEl.value = item.outcome || '';
     itemDescriptionEl.innerHTML = item.description || '';
     itemDueDateEl.value = item.dueDate || '';
+    itemCompletionDateEl.value = item.completionDate || '';
     selectedPriority = item.priority || 'green';
     modalTasks = (item.tasks || []).map((t) => ({ ...t }));
     modalTags = (item.tags || []).map((t) => ({ ...t }));
@@ -1584,6 +1586,7 @@ function openModal(boardId, column, id) {
     itemOutcomeEl.value = '';
     itemDescriptionEl.innerHTML = DESCRIPTION_TEMPLATE;
     itemDueDateEl.value = '';
+    itemCompletionDateEl.value = '';
     modalTasks = [];
     modalTags = [];
     deleteItemBtn.style.display = 'none';
@@ -1663,11 +1666,13 @@ saveItemBtn.addEventListener('click', () => {
     if (item.description !== itemDescriptionEl.innerHTML) changes.push('description');
     if (item.priority !== selectedPriority) changes.push('priority');
     if ((item.dueDate || null) !== (itemDueDateEl.value || null)) changes.push('due date');
+    if ((item.completionDate || null) !== (itemCompletionDateEl.value || null)) changes.push('completion date');
     item.heading = heading;
     item.outcome = itemOutcomeEl.value.trim();
     item.description = itemDescriptionEl.innerHTML;
     item.priority = selectedPriority;
     item.dueDate = itemDueDateEl.value || null;
+    item.completionDate = itemCompletionDateEl.value || null;
     item.tasks = cleanTasks;
     item.tags = modalTags;
     logActivity(item, changes.length ? `Edited (${changes.join(', ')})` : 'Edited');
@@ -1679,7 +1684,7 @@ saveItemBtn.addEventListener('click', () => {
       description: itemDescriptionEl.innerHTML,
       priority: selectedPriority,
       dueDate: itemDueDateEl.value || null,
-      completionDate: column === 'Completed' ? todayStr() : null,
+      completionDate: itemCompletionDateEl.value || (column === 'Completed' ? todayStr() : null),
       tasks: cleanTasks,
       tags: modalTags,
       activityLog: [],
